@@ -53,21 +53,3 @@ pip install torch torchvision --extra-index-url https://download.pytorch.org/whl
 python -m src.train --data-dir data --epochs 5 --batch-size 16
 ```
 
-## Checkpoints & persistence
-- `src/train.py` saves best checkpoints into the `checkpoints/` folder by default.
-- When using Colab, the notebook attempts to create a Drive-backed checkpoints folder so trained models persist between sessions.
-
-## Troubleshooting
-- JSON parse error opening the notebook in Colab: open `colab_train_fixed.ipynb` (not the original) or re-upload the fixed file.
-- `getcwd`/clone errors: the notebook forces the working directory to `/content` before cloning; run the top cell first.
-- Dataset not found: check the printed Drive root listing and set `DATA_DIR` in the notebook to the correct path.
-
-## Next improvements (suggested)
-- Add `infer.py` to load a checkpoint and run inference on a folder of images.
-- Add TensorBoard or Weights & Biases logging.
-- Add a dataset sanity-check cell to the notebook that prints CSV samples and shows a few images before training.
-
-## License
-Add a `LICENSE` file at the repo root with your preferred license.
-
-If you want I can commit this `README.md` to your GitHub repo for you. Tell me if you want any edits or additions.
