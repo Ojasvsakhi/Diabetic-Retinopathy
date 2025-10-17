@@ -2,6 +2,10 @@ Colab usage for Multitasking-learning-multimodal-network-for-Diabetic-Retinopath
 
 1) Open this repository in Google Colab or upload this folder to your Google Drive.
 
+If your project is on GitHub (recommended): https://github.com/Ojasvsakhi/Diabetic-Retinopathy
+
+You can open the notebook directly from GitHub in Colab or let the notebook auto-clone the repo into the Colab session.
+
 2) In Colab: set Runtime -> Change runtime type -> GPU
 
 3) Install requirements and mount drive (if needed):
