@@ -8,7 +8,7 @@ For more detailed information about the project implementation, architecture det
 
 The project uses the Diabetic Retinopathy dataset which consists of high-resolution retina images taken under varying imaging conditions. 
 
-Dataset access: [Goggle Drive Link](https://drive.google.com/drive/folders/1CvS_HmNtJ3U3mREmA9kalnS5w2rXTyk9)
+Dataset access: [Google Drive Link](https://drive.google.com/drive/folders/1CvS_HmNtJ3U3mREmA9kalnS5w2rXTyk9)
 
 The dataset contains:
 - Retinal fundus photographs labeled with DR grade (0-4)
