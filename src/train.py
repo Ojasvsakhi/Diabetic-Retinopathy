@@ -64,20 +64,11 @@ def train(args):
     # learning rate scheduler that reduces LR when validation metric plateaus
     # Create scheduler in a version-safe way: some PyTorch versions accept `verbose`,
     # some do not. Use inspect to decide which kwargs to pass.
+    # Create scheduler simply without `verbose` to avoid compatibility issues
     try:
-        import inspect
-        rlrop_init = optim.lr_scheduler.ReduceLROnPlateau.__init__
-        sig = inspect.signature(rlrop_init)
-        kwargs = {'mode': 'max', 'factor': 0.5, 'patience': 2}
-        if 'verbose' in sig.parameters:
-            kwargs['verbose'] = True
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, **kwargs)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
     except Exception:
-        # If anything goes wrong, fall back to creating without verbose, or to None
-        try:
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
-        except Exception:
-            scheduler = None
+        scheduler = None
 
     best_val_f1 = 0.0
     model.train()
