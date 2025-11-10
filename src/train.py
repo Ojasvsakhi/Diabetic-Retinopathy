@@ -32,28 +32,37 @@ def train(args):
         # train_loader.dataset is our FundusDataset; extract labels from its dataframe if available
         train_labels = []
         if hasattr(train_loader.dataset, 'df'):
-            train_labels = train_loader.dataset.df['label'].astype(int).values
+            train_labels = train_loader.dataset.df['label'].dropna().astype(int).values
         else:
             # fallback: iterate once over the loader to collect labels (small overhead)
             for _, lbls in train_loader:
                 train_labels.extend(lbls.numpy().tolist())
 
+        if len(train_labels) == 0:
+            raise ValueError('No labels found in training split')
+
         classes = np.unique(train_labels)
-        class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=train_labels)
-        # compute_class_weight returns weights in the order of `classes`, so we need a full vector of length num_classes
-        weights_arr = np.ones(cfg.num_classes, dtype=np.float32)
-        for c, w in zip(classes, class_weights):
-            weights_arr[int(c)] = float(w)
-        weights_tensor = torch.tensor(weights_arr, dtype=torch.float).to(device)
-        criterion_main = nn.CrossEntropyLoss(weight=weights_tensor)
-        print(f'Using class weights: {weights_arr}')
+        if len(classes) == 1:
+            # single-class in training split -> cannot compute balanced weights
+            print(f'Only one class present in training split: {classes}. Skipping class-weight computation.')
+            criterion_main = nn.CrossEntropyLoss()
+        else:
+            class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=train_labels)
+            # compute_class_weight returns weights in the order of `classes`, so we need a full vector of length num_classes
+            weights_arr = np.ones(cfg.num_classes, dtype=np.float32)
+            for c, w in zip(classes, class_weights):
+                weights_arr[int(c)] = float(w)
+            weights_tensor = torch.tensor(weights_arr, dtype=torch.float).to(device)
+            criterion_main = nn.CrossEntropyLoss(weight=weights_tensor)
+            print(f'Using class weights: {weights_arr}')
     except Exception as e:
         print(f'Could not compute class weights automatically: {e}. Falling back to unweighted CrossEntropyLoss')
         criterion_main = nn.CrossEntropyLoss()
     criterion_aux = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     # learning rate scheduler that reduces LR when validation metric plateaus
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2, verbose=True)
+    # Create scheduler without the `verbose` kwarg for compatibility with older PyTorch
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
 
     best_val_f1 = 0.0
     model.train()
@@ -102,7 +111,11 @@ def train(args):
 
         # step scheduler with validation metric (macro-F1)
         try:
+            old_lrs = [group['lr'] for group in optimizer.param_groups]
             scheduler.step(val_f1)
+            new_lrs = [group['lr'] for group in optimizer.param_groups]
+            if new_lrs != old_lrs:
+                print(f'Learning rates reduced: {old_lrs} -> {new_lrs}')
         except Exception:
             pass
 
