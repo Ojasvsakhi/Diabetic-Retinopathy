@@ -53,6 +53,7 @@ def train(args):
             for c, w in zip(classes, class_weights):
                 weights_arr[int(c)] = float(w)
             weights_tensor = torch.tensor(weights_arr, dtype=torch.float).to(device)
+            # Sample message for debugging
             criterion_main = nn.CrossEntropyLoss(weight=weights_tensor)
             print(f'Using class weights: {weights_arr}')
     except Exception as e:
