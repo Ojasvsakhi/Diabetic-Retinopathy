@@ -11,6 +11,8 @@ from .config import cfg
 from .data_loader import get_loaders, get_train_val_loaders
 from sklearn.metrics import accuracy_score, f1_score
 from .models import MultiTaskResNet
+import numpy as np
+from sklearn.utils.class_weight import compute_class_weight
 
 
 def set_seed(seed):
@@ -25,10 +27,33 @@ def train(args):
 
     train_loader, val_loader = get_train_val_loaders(data_dir=args.data_dir, batch_size=args.batch_size, img_size=args.img_size, num_workers=args.num_workers)
     model = MultiTaskResNet(backbone_name=cfg.model_name, num_classes=cfg.num_classes).to(device)
+    # compute class weights from the training dataset to help with imbalance
+    try:
+        # train_loader.dataset is our FundusDataset; extract labels from its dataframe if available
+        train_labels = []
+        if hasattr(train_loader.dataset, 'df'):
+            train_labels = train_loader.dataset.df['label'].astype(int).values
+        else:
+            # fallback: iterate once over the loader to collect labels (small overhead)
+            for _, lbls in train_loader:
+                train_labels.extend(lbls.numpy().tolist())
 
-    criterion_main = nn.CrossEntropyLoss()
+        classes = np.unique(train_labels)
+        class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=train_labels)
+        # compute_class_weight returns weights in the order of `classes`, so we need a full vector of length num_classes
+        weights_arr = np.ones(cfg.num_classes, dtype=np.float32)
+        for c, w in zip(classes, class_weights):
+            weights_arr[int(c)] = float(w)
+        weights_tensor = torch.tensor(weights_arr, dtype=torch.float).to(device)
+        criterion_main = nn.CrossEntropyLoss(weight=weights_tensor)
+        print(f'Using class weights: {weights_arr}')
+    except Exception as e:
+        print(f'Could not compute class weights automatically: {e}. Falling back to unweighted CrossEntropyLoss')
+        criterion_main = nn.CrossEntropyLoss()
     criterion_aux = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    # learning rate scheduler that reduces LR when validation metric plateaus
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2, verbose=True)
 
     best_val_f1 = 0.0
     model.train()
@@ -74,6 +99,12 @@ def train(args):
             best_val_f1 = val_f1
             ckpt_path = os.path.join('checkpoints', f'best_epoch_{epoch+1}.pt')
             torch.save({'model_state': model.state_dict(), 'epoch': epoch+1, 'val_f1': val_f1}, ckpt_path)
+
+        # step scheduler with validation metric (macro-F1)
+        try:
+            scheduler.step(val_f1)
+        except Exception:
+            pass
 
         model.train()
 
