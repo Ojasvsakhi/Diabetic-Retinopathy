@@ -61,8 +61,22 @@ def train(args):
     criterion_aux = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     # learning rate scheduler that reduces LR when validation metric plateaus
-    # Create scheduler without the `verbose` kwarg for compatibility with older PyTorch
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
+    # Create scheduler in a version-safe way: some PyTorch versions accept `verbose`,
+    # some do not. Use inspect to decide which kwargs to pass.
+    try:
+        import inspect
+        rlrop_init = optim.lr_scheduler.ReduceLROnPlateau.__init__
+        sig = inspect.signature(rlrop_init)
+        kwargs = {'mode': 'max', 'factor': 0.5, 'patience': 2}
+        if 'verbose' in sig.parameters:
+            kwargs['verbose'] = True
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, **kwargs)
+    except Exception:
+        # If anything goes wrong, fall back to creating without verbose, or to None
+        try:
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
+        except Exception:
+            scheduler = None
 
     best_val_f1 = 0.0
     model.train()
@@ -110,14 +124,16 @@ def train(args):
             torch.save({'model_state': model.state_dict(), 'epoch': epoch+1, 'val_f1': val_f1}, ckpt_path)
 
         # step scheduler with validation metric (macro-F1)
-        try:
+        if scheduler is not None:
             old_lrs = [group['lr'] for group in optimizer.param_groups]
-            scheduler.step(val_f1)
+            try:
+                scheduler.step(val_f1)
+            except Exception:
+                # If scheduler is present but fails for any reason, continue training
+                pass
             new_lrs = [group['lr'] for group in optimizer.param_groups]
             if new_lrs != old_lrs:
                 print(f'Learning rates reduced: {old_lrs} -> {new_lrs}')
-        except Exception:
-            pass
 
         model.train()
 
