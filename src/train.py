@@ -10,7 +10,7 @@ from tqdm import tqdm
 from .config import cfg
 from .data_loader import get_loaders, get_train_val_loaders
 from sklearn.metrics import accuracy_score, f1_score
-from .models import MultiTaskResNet
+from .models import MultiTaskModel, MultiTaskResNet
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
 
@@ -18,7 +18,10 @@ from sklearn.utils.class_weight import compute_class_weight
 def set_seed(seed):
     random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 
 def train(args):
@@ -26,7 +29,12 @@ def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     train_loader, val_loader = get_train_val_loaders(data_dir=args.data_dir, batch_size=args.batch_size, img_size=args.img_size, num_workers=args.num_workers)
-    model = MultiTaskResNet(backbone_name=cfg.model_name, num_classes=cfg.num_classes).to(device)
+    
+    # Get model name from args if provided, otherwise use config
+    model_name = getattr(args, 'model_name', None) or cfg.model_name
+    
+    print(f'Using model: {model_name}')
+    model = MultiTaskModel(backbone_name=model_name, num_classes=cfg.num_classes).to(device)
     # compute class weights from the training dataset to help with imbalance
     try:
         # train_loader.dataset is our FundusDataset; extract labels from its dataframe if available
@@ -138,5 +146,7 @@ if __name__ == '__main__':
     parser.add_argument('--img-size', type=int, default=cfg.img_size)
     parser.add_argument('--lr', type=float, default=cfg.lr)
     parser.add_argument('--num-workers', type=int, default=cfg.num_workers)
+    parser.add_argument('--model-name', type=str, default=cfg.model_name, 
+                        help='Model backbone: resnet50, vit_base_patch16_224, vit_small_patch16_224, vit_tiny_patch16_224')
     args = parser.parse_args()
     train(args)
