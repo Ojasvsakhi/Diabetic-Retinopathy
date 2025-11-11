@@ -20,8 +20,9 @@ def set_seed(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+        # Don't set deterministic=True as it significantly slows training
+        # torch.backends.cudnn.deterministic = True
+        # torch.backends.cudnn.benchmark = False
 
 
 def train(args):
@@ -35,6 +36,14 @@ def train(args):
     
     print(f'Using model: {model_name}')
     model = MultiTaskModel(backbone_name=model_name, num_classes=cfg.num_classes).to(device)
+    
+    # Adjust learning rate for ViT models (they often need lower LR)
+    if model_name.startswith('vit') and args.lr == cfg.lr:
+        # If using default LR, suggest lower LR for ViT
+        adjusted_lr = args.lr * 0.5  # Half the learning rate for ViT
+        print(f'Note: ViT models often work better with lower learning rate. Consider using --lr {adjusted_lr:.6f}')
+        # Don't auto-adjust, just warn - let user decide
+    
     # compute class weights from the training dataset to help with imbalance
     try:
         # train_loader.dataset is our FundusDataset; extract labels from its dataframe if available
@@ -74,7 +83,8 @@ def train(args):
     # some do not. Use inspect to decide which kwargs to pass.
     # Create scheduler simply without `verbose` to avoid compatibility issues
     try:
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
+        # Use less aggressive scheduler - patience=3 instead of 2, factor=0.7 instead of 0.5
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.7, patience=3)
     except Exception:
         scheduler = None
 

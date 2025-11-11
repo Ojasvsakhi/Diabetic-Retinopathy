@@ -80,13 +80,11 @@ def get_loaders(data_dir, batch_size=16, img_size=224, num_workers=4):
     # default images folder in your workspace is 'DR_images'
     images_dir = os.path.join(data_dir, 'DR_images')
 
+    # Using moderate augmentation - not too aggressive to maintain good accuracy
     train_transform = transforms.Compose([
-        transforms.Resize((img_size + 32, img_size + 32)),  # Slightly larger for crop
-        transforms.RandomResizedCrop(img_size, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
+        transforms.Resize((img_size, img_size)),
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomVerticalFlip(p=0.3),  # Fundus images can be flipped
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-        transforms.RandomRotation(degrees=15),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),  # Reduced intensity
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
@@ -121,13 +119,11 @@ def get_train_val_loaders(csv_path=None, images_dir=None, data_dir=None, batch_s
     train_df, val_df = train_test_split(df, test_size=val_split, stratify=df['label'], random_state=random_state)
 
     # define transforms for train/val
+    # Using moderate augmentation - not too aggressive to maintain good accuracy
     train_transform = transforms.Compose([
-        transforms.Resize((img_size + 32, img_size + 32)),  # Slightly larger for crop
-        transforms.RandomResizedCrop(img_size, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
+        transforms.Resize((img_size, img_size)),
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomVerticalFlip(p=0.3),  # Fundus images can be flipped
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-        transforms.RandomRotation(degrees=15),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),  # Reduced intensity
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])

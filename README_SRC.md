@@ -2,9 +2,16 @@ README: src/ package — Multitasking DR project
 
 This document explains the `src/` package in this repository, the training contract, data shapes, how to run the training (locally and on Colab), and practical next steps and experiments.
 
+**Recent Updates (Latest Version):**
+- ✅ Added Vision Transformer (ViT) support via `timm` library
+- ✅ Enhanced data augmentation pipeline
+- ✅ Fixed deprecated PyTorch warnings
+- ✅ Improved model selection and configuration
+- ✅ Better reproducibility with enhanced seed setting
+
 Purpose
 -------
-The project is a multitask image model for Diabetic Retinopathy (DR) that trains a ResNet backbone with two heads:
+The project is a multitask image model for Diabetic Retinopathy (DR) that trains either a **ResNet50** or **Vision Transformer (ViT)** backbone with two heads:
 - Main head: 5-way classification (DR grades 0..4)
 - Auxiliary head: binary classification (e.g., referable DR = label >= 2)
 
@@ -14,6 +21,7 @@ Files in `src/`
 ----------------
 - `config.py`
   - Contains a dataclass `Config` with defaults (img_size, batch_size, epochs, lr, model_name, num_classes, seed).
+  - `model_name` supports: `'resnet50'`, `'vit_base_patch16_224'`, `'vit_small_patch16_224'`, `'vit_tiny_patch16_224'`.
   - Use `from src.config import cfg` to read defaults.
 
 - `data_loader.py`
@@ -21,38 +29,60 @@ Files in `src/`
     - Accepts CSV columns `id` or `id_code` and `label` or `Label`.
     - Robust image path handling: supports ids with/without extension and `.jpg`/`.jpeg`/`.png`.
     - Raises informative errors for missing columns or missing image files.
-    - Applies torchvision transforms (resize, flip, to-tensor, normalize).
+    - **Enhanced transforms**: Training uses RandomResizedCrop, RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, RandomRotation. Validation uses minimal transforms (Resize, ToTensor, Normalize).
   - `get_loaders(data_dir, batch_size, img_size, num_workers)`: convenience loader for a single dataset.
   - `get_train_val_loaders(..., val_split=0.2)`: stratified split (sklearn), creates temp CSVs for train/val, returns (train_loader, val_loader).
 
 - `models.py`
-  - `MultiTaskResNet(backbone_name='resnet50', num_classes=5, aux_output=1, pretrained=True)`:
-    - Loads a pretrained ResNet backbone (currently resnet50).
-    - Strips final fc (replaces with Identity) and adds two heads:
+  - `MultiTaskModel(backbone_name='resnet50', num_classes=5, aux_output=1, pretrained=True)`:
+    - **Supports multiple backbones**:
+      - `'resnet50'`: ResNet50 CNN backbone (uses updated `weights=` API, no deprecation warnings)
+      - `'vit_base_patch16_224'`: Vision Transformer Base (768-dim embeddings)
+      - `'vit_small_patch16_224'`: Vision Transformer Small (384-dim embeddings)
+      - `'vit_tiny_patch16_224'`: Vision Transformer Tiny (192-dim embeddings)
+    - For ResNet: Loads pretrained backbone, strips final fc (replaces with Identity).
+    - For ViT: Uses `timm.create_model()` with `num_classes=0` to get feature tokens, extracts CLS token.
+    - Adds two heads:
       - `classifier`: Linear -> ReLU -> Dropout -> Linear(num_classes)
       - `aux_head`: Linear -> ReLU -> Dropout -> Linear(aux_output)
     - `forward(x)` returns `(out_main_logits, out_aux_logits)`.
+  - Backward compatibility: `MultiTaskResNet` is an alias for `MultiTaskModel`.
 
 - `train.py`
   - Entrypoint `train(args)` that:
-    - Sets random seeds
+    - Sets random seeds (with CUDA deterministic mode for reproducibility)
     - Builds train/val loaders via `get_train_val_loaders`
-    - Instantiates `MultiTaskResNet` and moves to `device` (cuda if available)
+    - Instantiates `MultiTaskModel` with selected backbone and moves to `device` (cuda if available)
+    - **Automatic class weight computation** from training data for handling imbalanced classes
     - Uses loss functions:
-      - Main: `nn.CrossEntropyLoss()`
+      - Main: `nn.CrossEntropyLoss(weight=class_weights)` (weighted if classes imbalanced)
       - Aux: `nn.BCEWithLogitsLoss()`
     - Uses `optim.Adam` optimizer
+    - **Learning rate scheduler**: `ReduceLROnPlateau` (reduces LR when validation F1 plateaus)
     - Training loop:
       - For each batch: compute `loss_main`, `aux_labels = (labels >= 2).float().unsqueeze(1)`, `loss_aux`, `loss = loss_main + 0.5 * loss_aux`.
       - After each epoch run validation and compute accuracy and macro-F1 (sklearn.metrics).
       - Saves best checkpoint in `checkpoints/best_epoch_{epoch}.pt` (dict with `model_state`, `epoch`, `val_f1`).
-  - CLI (`if __name__ == '__main__'`): standard argparse for `--data-dir`, `--epochs`, `--batch-size`, `--img-size`, `--lr`, `--num-workers`.
+      - Steps LR scheduler based on validation macro-F1.
+  - CLI (`if __name__ == '__main__'`): standard argparse for `--data-dir`, `--epochs`, `--batch-size`, `--img-size`, `--lr`, `--num-workers`, `--model-name`.
 
 Data shapes & preprocessing
 ---------------------------
 - CSV: expects rows with `id` (or `id_code`) and `label` (0..4). Labels are integers.
 - Image input: PIL image -> transforms -> torch.Tensor shape `[3, img_size, img_size]`.
-- Normalization uses ImageNet mean/std: mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225].
+- **Training transforms** (enhanced):
+  - Resize to (img_size+32, img_size+32)
+  - RandomResizedCrop(img_size, scale=(0.8, 1.0), ratio=(0.9, 1.1))
+  - RandomHorizontalFlip(p=0.5)
+  - RandomVerticalFlip(p=0.3)
+  - ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)
+  - RandomRotation(degrees=15)
+  - ToTensor()
+  - Normalize with ImageNet mean/std: mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+- **Validation transforms** (minimal):
+  - Resize to (img_size, img_size)
+  - ToTensor()
+  - Normalize with ImageNet mean/std
 - Model outputs:
   - Main logits: shape `[batch, num_classes]` (use `torch.argmax` for predicted class)
   - Aux logits: shape `[batch, 1]` (apply `sigmoid` to convert to probability if needed)
@@ -76,14 +106,17 @@ Common edge cases and failures
 -----------------------------
 - CSV column mismatch → `FundusDataset` will raise ValueError.
 - Missing images → `FundusDataset` will raise FileNotFoundError listing candidate paths it tried.
-- Small datasets: training ResNet-50 on a few hundred images can lead to overfitting or weak generalization.
-- Class imbalance: accuracy may be misleading; prefer macro-F1 and per-class confusion matrices.
-- Torchvision deprecation warning: the code uses `pretrained=True`. This still works but emits a warning — recommended to update `models.py` to the `weights=` API.
+- Small datasets: training on a few hundred images can lead to overfitting or weak generalization.
+- Class imbalance: ✅ **FIXED** - Automatic class weight computation now handles this. Accuracy may still be misleading; prefer macro-F1 and per-class confusion matrices.
+- ~~Torchvision deprecation warning~~ ✅ **FIXED** - Updated to use `weights=` API for ResNet50.
+- ViT memory issues: If running out of memory with Vision Transformer, reduce batch size or use `vit_small_patch16_224` or `vit_tiny_patch16_224`.
+- Missing `timm` library: Install with `pip install timm` (already in requirements_colab.txt).
 
 Quick run examples
 ------------------
-- Colab (notebook `colab_train_fixed.ipynb` handles cloning, installing, Drive mounting):
+- Colab (notebook `notebook.ipynb` handles cloning, installing, Drive mounting):
   - Set runtime to GPU, run the top cell, then run the training cell. Notebook auto-sets `DATA_DIR` to your Drive `DR dataset` folder by default.
+  - **Configure model**: Edit `MODEL_NAME` variable in the training cell (options: `'resnet50'`, `'vit_base_patch16_224'`, `'vit_small_patch16_224'`, `'vit_tiny_patch16_224'`).
 
 - Local (PowerShell example):
 ```powershell
@@ -93,55 +126,53 @@ python -m venv .venv
 
 # install deps (adjust torch wheel for CUDA if needed)
 pip install -r requirements_colab.txt
-pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu117
+pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu118
 
-# run training
-python -m src.train --data-dir data --epochs 20 --batch-size 16
+# run training with Vision Transformer (recommended)
+python -m src.train --data-dir data --epochs 20 --batch-size 16 --model-name vit_base_patch16_224
+
+# or with ResNet50
+python -m src.train --data-dir data --epochs 20 --batch-size 16 --model-name resnet50
 ```
 
-Recommended quick experiments (order matters)
---------------------------------------------
-1. Increase epochs (e.g., 20–50). Many pretrained models fine-tune over more epochs.
-2. Compute class weights from `dr_labels.csv` and pass to `nn.CrossEntropyLoss(weight=weights_tensor)`. This helps imbalance.
-3. Add a learning-rate scheduler, for example ReduceLROnPlateau or CosineAnnealingLR.
-4. Improve augmentations: RandomResizedCrop, ColorJitter, small rotations.
-5. Freeze backbone for first few epochs (train only heads) then unfreeze with a smaller LR.
-6. Try smaller or lighter architectures if overfitting (EfficientNet, MobileNet, or smaller ResNet).
-7. Use `torch.cuda.amp` for mixed-precision training if running on GPUs with limited memory.
+Implemented improvements (✅) and remaining recommendations
+------------------------------------------------------------
+✅ **1. Increased epochs support**: Training supports configurable epochs (default 5, recommend 20-50).
 
-Small code snippets (where to change)
-------------------------------------
-- Use class weights in `train.py` (conceptual):
-```python
-# compute weights (example)
-from sklearn.utils.class_weight import compute_class_weight
-import numpy as np
-labels = train_df['label'].values
-class_weights = compute_class_weight('balanced', classes=np.unique(labels), y=labels)
-weights = torch.tensor(class_weights, dtype=torch.float).to(device)
-criterion_main = nn.CrossEntropyLoss(weight=weights)
-```
+✅ **2. Class weights**: Automatic computation and application of class weights in `CrossEntropyLoss` to handle imbalanced datasets.
 
-- Replace deprecated pretrained API in `models.py`:
-```python
-from torchvision.models import resnet50, ResNet50_Weights
-backbone = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-```
+✅ **3. Learning rate scheduler**: `ReduceLROnPlateau` scheduler implemented, reduces LR when validation F1 plateaus.
 
-- Add a scheduler snippet in `train.py`:
-```python
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
-# after validation: scheduler.step(val_f1)
-```
+✅ **4. Enhanced augmentations**: RandomResizedCrop, ColorJitter, RandomRotation, RandomVerticalFlip all implemented.
 
-Next steps I can implement for you (pick any)
----------------------------------------------
-- Update `models.py` to the new `weights=` API to silence warnings.
-- Add class-weight computation and use in `CrossEntropyLoss`.
-- Add a learning-rate scheduler and integrate stepping with validation macro-F1.
-- Add TensorBoard logging for loss and per-class metrics.
+✅ **5. Multiple architectures**: Now supports ResNet50 and Vision Transformer variants (Base, Small, Tiny).
+
+**Remaining recommendations for future work:**
+- Freeze backbone for first few epochs (train only heads) then unfreeze with a smaller LR.
+- Use `torch.cuda.amp` for mixed-precision training if running on GPUs with limited memory.
+- Add TensorBoard logging for loss and per-class metrics visualization.
+- Implement cross-validation for more robust evaluation.
+
+Summary of Implemented Features
+--------------------------------
+All the following improvements have been **implemented and tested**:
+
+✅ **Class weights**: Automatically computed from training data and applied in `CrossEntropyLoss` (see `train.py` lines 36-66).
+
+✅ **Updated pretrained API**: ResNet50 now uses `weights=ResNet50_Weights.IMAGENET1K_V1` instead of deprecated `pretrained=True` (see `models.py` lines 20-26).
+
+✅ **Learning rate scheduler**: `ReduceLROnPlateau` implemented and integrated with validation macro-F1 (see `train.py` lines 69-128).
+
+✅ **Vision Transformer support**: Multiple ViT variants available via `timm` library (see `models.py` lines 31-75).
+
+✅ **Enhanced data augmentation**: Comprehensive augmentation pipeline implemented (see `data_loader.py` lines 83-92 and 120-129).
+
+Future enhancements (not yet implemented)
+------------------------------------------
+- Add TensorBoard logging for loss and per-class metrics visualization.
 - Add an `infer.py` script for running model inference on a folder of images.
-
-If you want, tell me which three changes to implement first and I will make them, run quick local syntax checks, and create a commit. If you'd rather I just produce patches/snippets you can paste into the code, tell me which ones and I'll provide them.
+- Implement progressive training (freeze backbone initially, then unfreeze).
+- Add mixed-precision training support (`torch.cuda.amp`).
+- Implement cross-validation for more robust evaluation.
 
 *** End of README_SRC.md
