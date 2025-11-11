@@ -94,10 +94,14 @@ class MultiTaskModel(nn.Module):
         if self.backbone_name.startswith('vit'):
             if isinstance(feat, tuple):
                 feat = feat[0]
-            # For ViT, the first token is the CLS token, or we can average pool all tokens
+            # For ViT, try both CLS token and average pooling, then combine
             if feat.dim() == 3:
-                # Use CLS token (first token) - typically better than average pooling
-                feat = feat[:, 0, :]  # [batch, embed_dim]
+                # CLS token (first token) - contains global information
+                cls_token = feat[:, 0, :]  # [batch, embed_dim]
+                # Average pool all tokens (including CLS) - contains spatial information
+                avg_pooled = feat.mean(dim=1)  # [batch, embed_dim]
+                # Combine both for richer representation
+                feat = (cls_token + avg_pooled) / 2.0  # Average of CLS and spatial features
         
         out_main = self.classifier(feat)
         out_aux = self.aux_head(feat)

@@ -37,12 +37,13 @@ def train(args):
     print(f'Using model: {model_name}')
     model = MultiTaskModel(backbone_name=model_name, num_classes=cfg.num_classes).to(device)
     
-    # Adjust learning rate for ViT models (they often need lower LR)
-    if model_name.startswith('vit') and args.lr == cfg.lr:
-        # If using default LR, suggest lower LR for ViT
-        adjusted_lr = args.lr * 0.5  # Half the learning rate for ViT
-        print(f'Note: ViT models often work better with lower learning rate. Consider using --lr {adjusted_lr:.6f}')
-        # Don't auto-adjust, just warn - let user decide
+    # ViT models need different training setup - lower LR and layer-wise LR decay
+    is_vit = model_name.startswith('vit')
+    if is_vit:
+        # Auto-adjust learning rate for ViT if using default
+        if args.lr == cfg.lr:
+            args.lr = args.lr * 0.1  # ViT typically needs 10x lower LR (1e-5 instead of 1e-4)
+            print(f'Auto-adjusted learning rate for ViT: {args.lr:.6f}')
     
     # compute class weights from the training dataset to help with imbalance
     try:
@@ -77,7 +78,28 @@ def train(args):
         print(f'Could not compute class weights automatically: {e}. Falling back to unweighted CrossEntropyLoss')
         criterion_main = nn.CrossEntropyLoss()
     criterion_aux = nn.BCEWithLogitsLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    
+    # Use different optimizers for ViT vs ResNet
+    if is_vit:
+        # ViT: Use AdamW with layer-wise learning rate decay
+        # Separate parameters: backbone vs classification heads
+        backbone_params = []
+        head_params = []
+        for name, param in model.named_parameters():
+            if 'backbone' in name:
+                backbone_params.append(param)
+            else:
+                head_params.append(param)
+        
+        # Use lower LR for pretrained backbone, higher for new heads
+        optimizer = optim.AdamW([
+            {'params': backbone_params, 'lr': args.lr * 0.1, 'weight_decay': 0.01},  # Very low LR for pretrained
+            {'params': head_params, 'lr': args.lr, 'weight_decay': 0.01}  # Normal LR for new heads
+        ])
+        print(f'Using AdamW with layer-wise LR: backbone={args.lr * 0.1:.6f}, heads={args.lr:.6f}')
+    else:
+        # ResNet: Use standard Adam optimizer
+        optimizer = optim.Adam(model.parameters(), lr=args.lr)
     # learning rate scheduler that reduces LR when validation metric plateaus
     # Create scheduler in a version-safe way: some PyTorch versions accept `verbose`,
     # some do not. Use inspect to decide which kwargs to pass.
@@ -104,6 +126,11 @@ def train(args):
             loss_aux = criterion_aux(out_aux, aux_labels)
             loss = loss_main + 0.5 * loss_aux
             loss.backward()
+            
+            # Gradient clipping for ViT (helps with training stability)
+            if is_vit:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
             optimizer.step()
 
             total_loss += loss.item()
