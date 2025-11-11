@@ -16,14 +16,8 @@ class MultiTaskModel(nn.Module):
         self.backbone_name = backbone_name
         
         if backbone_name == 'resnet50':
-            # Fix deprecated pretrained parameter
-            try:
-                from torchvision.models import ResNet50_Weights
-                weights = ResNet50_Weights.IMAGENET1K_V1 if pretrained else None
-                backbone = models.resnet50(weights=weights)
-            except ImportError:
-                # Fallback for older torchvision versions
-                backbone = models.resnet50(pretrained=pretrained)
+            # Use original pretrained parameter to match original working code
+            backbone = models.resnet50(pretrained=pretrained)
             in_features = backbone.fc.in_features
             backbone.fc = nn.Identity()
             self.backbone = backbone

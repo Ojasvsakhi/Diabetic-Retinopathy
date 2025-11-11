@@ -82,9 +82,9 @@ def train(args):
     # Create scheduler in a version-safe way: some PyTorch versions accept `verbose`,
     # some do not. Use inspect to decide which kwargs to pass.
     # Create scheduler simply without `verbose` to avoid compatibility issues
+    # Learning rate scheduler - less aggressive to match original behavior
     try:
-        # Use less aggressive scheduler - patience=3 instead of 2, factor=0.7 instead of 0.5
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.7, patience=3)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
     except Exception:
         scheduler = None
 
