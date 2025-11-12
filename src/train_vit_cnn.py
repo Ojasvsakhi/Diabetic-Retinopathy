@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
+from torch.cuda.amp import autocast, GradScaler
 
 from .config import cfg
 from .data_loader import get_train_val_loaders
@@ -56,6 +57,8 @@ def train(args):
 
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
+    use_amp = torch.cuda.is_available()
+    scaler = GradScaler() if use_amp else None
 
     best_val_f1 = 0.0
     for epoch in range(args.epochs):
@@ -66,10 +69,20 @@ def train(args):
             imgs = imgs.to(device)
             labels = labels.to(device)
             optimizer.zero_grad()
-            logits = model(imgs)
-            loss = criterion(logits, labels)
-            loss.backward()
-            optimizer.step()
+            if use_amp:
+                with autocast():
+                    out = model(imgs)
+                    logits = out[0] if isinstance(out, (tuple, list)) else out
+                    loss = criterion(logits, labels)
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                out = model(imgs)
+                logits = out[0] if isinstance(out, (tuple, list)) else out
+                loss = criterion(logits, labels)
+                loss.backward()
+                optimizer.step()
 
             total_loss += loss.item()
             loop.set_postfix(loss=total_loss / (loop.n + 1))
@@ -83,8 +96,15 @@ def train(args):
             for imgs, labels in tqdm(val_loader, desc='Validation'):
                 imgs = imgs.to(device)
                 labels = labels.to(device)
-                logits = model(imgs)
-                loss = criterion(logits, labels)
+                if use_amp:
+                    with autocast():
+                        out = model(imgs)
+                        logits = out[0] if isinstance(out, (tuple, list)) else out
+                        loss = criterion(logits, labels)
+                else:
+                    out = model(imgs)
+                    logits = out[0] if isinstance(out, (tuple, list)) else out
+                    loss = criterion(logits, labels)
                 val_loss += loss.item()
                 preds = torch.argmax(logits, dim=1)
                 all_preds.extend(preds.cpu().numpy().tolist())
@@ -116,6 +136,7 @@ if __name__ == '__main__':
     parser.add_argument('--img-size', type=int, default=224)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--num-workers', type=int, default=4)
+    parser.add_argument('--model-name', type=str, default='vit_cnn', help='model identifier (e.g. vit_cnn)')
     parser.add_argument('--pretrained-cnn', action='store_true')
     parser.add_argument('--pretrained-vit', action='store_true')
     args = parser.parse_args()

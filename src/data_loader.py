@@ -81,10 +81,15 @@ def get_loaders(data_dir, batch_size=16, img_size=224, num_workers=4):
     images_dir = os.path.join(data_dir, 'DR_images')
 
     train_transform = transforms.Compose([
-        transforms.Resize((img_size, img_size)),
-        transforms.RandomHorizontalFlip(),
+        # stronger augmentations for better generalization
+        transforms.RandomResizedCrop(img_size, scale=(0.7, 1.0), ratio=(3/4, 4/3)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomVerticalFlip(p=0.1),
+        transforms.RandomRotation(degrees=15),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.02),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        transforms.RandomErasing(p=0.2, scale=(0.02, 0.2), ratio=(0.3, 3.3), value='random')
     ])
 
     ds = FundusDataset(csv_path, images_dir, transform=train_transform)
@@ -118,14 +123,20 @@ def get_train_val_loaders(csv_path=None, images_dir=None, data_dir=None, batch_s
 
     # define transforms for train/val
     train_transform = transforms.Compose([
-        transforms.Resize((img_size, img_size)),
-        transforms.RandomHorizontalFlip(),
+        transforms.RandomResizedCrop(img_size, scale=(0.7, 1.0), ratio=(3/4, 4/3)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomVerticalFlip(p=0.1),
+        transforms.RandomRotation(degrees=15),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.02),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        transforms.RandomErasing(p=0.2, scale=(0.02, 0.2), ratio=(0.3, 3.3), value='random')
     ])
 
     val_transform = transforms.Compose([
-        transforms.Resize((img_size, img_size)),
+        # validation: deterministic transforms
+        transforms.Resize(256),
+        transforms.CenterCrop(img_size),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
@@ -145,7 +156,8 @@ def get_train_val_loaders(csv_path=None, images_dir=None, data_dir=None, batch_s
     train_ds = FundusDataset(tmp_train.name, images_dir, transform=train_transform)
     val_ds = FundusDataset(tmp_val.name, images_dir, transform=val_transform)
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    # enable pin_memory for faster host->GPU transfers when using CUDA
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
     return train_loader, val_loader
