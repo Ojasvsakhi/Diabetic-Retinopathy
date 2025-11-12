@@ -29,6 +29,7 @@ The dataset contains:
 - **Vision Transformer Base** (`vit_base_patch16_224`): Recommended for best accuracy
 - **Vision Transformer Small** (`vit_small_patch16_224`): Balanced performance and speed
 - **Vision Transformer Tiny** (`vit_tiny_patch16_224`): Fastest option with lower memory usage
+- **Hybrid CNN + LSTM** (`hybrid_cnn_lstm`): ResNet50 feature extractor followed by bidirectional LSTM for sequence modelling of spatial features (based on literature-reported 87.5% accuracy)
 
 ### Enhanced Data Augmentation
 - RandomResizedCrop for better generalization
@@ -105,6 +106,7 @@ If using Google Drive, the Colab notebook expects the dataset at `/content/drive
 6. **Configure your model** in the training cell:
    - Set `MODEL_NAME = 'vit_base_patch16_224'` for Vision Transformer (recommended)
    - Or use `MODEL_NAME = 'resnet50'` for ResNet50 baseline
+   - Use `MODEL_NAME = 'hybrid_cnn_lstm'` to enable the new CNN+LSTM hybrid model
    - Adjust `BATCH_SIZE` if needed (ViT models use more memory)
 7. Run the final cell to start training. Best checkpoints will be saved under `checkpoints/` (the notebook attempts to persist them to Drive).
 
@@ -130,6 +132,9 @@ python -m src.train --data-dir data --epochs 20 --batch-size 16 --model-name res
 
 # Using smaller ViT variant (if memory constrained)
 python -m src.train --data-dir data --epochs 20 --batch-size 16 --model-name vit_small_patch16_224
+
+# Using hybrid CNN + LSTM model (ResNet50 features + bidirectional LSTM)
+python -m src.train --data-dir data --epochs 20 --batch-size 16 --model-name hybrid_cnn_lstm
 ```
 
 **Note**: Vision Transformer models typically achieve better accuracy than ResNet50 but require more GPU memory. Reduce batch size if you encounter out-of-memory errors.

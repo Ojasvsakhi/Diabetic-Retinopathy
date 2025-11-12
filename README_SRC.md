@@ -36,12 +36,14 @@ Files in `src/`
 - `models.py`
   - `MultiTaskModel(backbone_name='resnet50', num_classes=5, aux_output=1, pretrained=True)`:
     - **Supports multiple backbones**:
-      - `'resnet50'`: ResNet50 CNN backbone (uses updated `weights=` API, no deprecation warnings)
-      - `'vit_base_patch16_224'`: Vision Transformer Base (768-dim embeddings)
-      - `'vit_small_patch16_224'`: Vision Transformer Small (384-dim embeddings)
-      - `'vit_tiny_patch16_224'`: Vision Transformer Tiny (192-dim embeddings)
+      - `'resnet50'`: ResNet50 CNN backbone (pretrained head removed; avgpool retained).
+      - `'vit_base_patch16_224'`: Vision Transformer Base (768-dim embeddings).
+      - `'vit_small_patch16_224'`: Vision Transformer Small (384-dim embeddings).
+      - `'vit_tiny_patch16_224'`: Vision Transformer Tiny (192-dim embeddings).
+      - `'hybrid_cnn_lstm'` / `'resnet50_lstm'`: Hybrid model combining ResNet50 feature maps with a bidirectional LSTM (512 hidden units) to model spatial sequences (inspired by reported 87.5% accuracy in literature).
     - For ResNet: Loads pretrained backbone, strips final fc (replaces with Identity).
-    - For ViT: Uses `timm.create_model()` with `num_classes=0` to get feature tokens, extracts CLS token.
+    - For hybrid CNN+LSTM: ResNet50 provides a grid of features (avgpool removed), reshaped into a sequence and passed through the LSTM; combined output feeds the classification heads.
+    - For ViT: Uses `timm.create_model()` with `num_classes=0` to get feature tokens, combining CLS token and average-pooled tokens.
     - Adds two heads:
       - `classifier`: Linear -> ReLU -> Dropout -> Linear(num_classes)
       - `aux_head`: Linear -> ReLU -> Dropout -> Linear(aux_output)
@@ -133,6 +135,9 @@ python -m src.train --data-dir data --epochs 20 --batch-size 16 --model-name vit
 
 # or with ResNet50
 python -m src.train --data-dir data --epochs 20 --batch-size 16 --model-name resnet50
+
+# or with hybrid CNN + LSTM
+python -m src.train --data-dir data --epochs 20 --batch-size 16 --model-name hybrid_cnn_lstm
 ```
 
 Implemented improvements (✅) and remaining recommendations
