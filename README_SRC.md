@@ -2,13 +2,6 @@ README: src/ package — Multitasking DR project
 
 This document explains the `src/` package in this repository, the training contract, data shapes, how to run the training (locally and on Colab), and practical next steps and experiments.
 
-**Recent Updates (Latest Version):**
-- ✅ Added Vision Transformer (ViT) support via `timm` library
-- ✅ Enhanced data augmentation pipeline
-- ✅ Fixed deprecated PyTorch warnings
-- ✅ Improved model selection and configuration
-- ✅ Better reproducibility with enhanced seed setting
-
 Purpose
 -------
 The project is a multitask image model for Diabetic Retinopathy (DR) that trains either a **ResNet50** or **Vision Transformer (ViT)** backbone with two heads:
