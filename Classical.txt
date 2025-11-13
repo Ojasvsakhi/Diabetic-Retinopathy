@@ -1,0 +1,27 @@
+Training classifier: xgboost
+Extracting features: 100% 13/13 [00:40<00:00,  3.08s/it]
+Extracting features: 100% 4/4 [00:10<00:00,  2.56s/it]
+Train features shape: (396, 2048) Val features shape: (99, 2048)
+After PCA: (396, 256)
+Validation -- acc: 0.5455 macro-F1: 0.3330
+
+Training classifier: random_forest
+Extracting features: 100% 13/13 [00:39<00:00,  3.06s/it]
+Extracting features: 100% 4/4 [00:10<00:00,  2.50s/it]
+Train features shape: (396, 2048) Val features shape: (99, 2048)
+After PCA: (396, 256)
+Validation -- acc: 0.4444 macro-F1: 0.2127
+
+Training classifier: svm
+Extracting features: 100% 13/13 [00:39<00:00,  3.06s/it]
+Extracting features: 100% 4/4 [00:09<00:00,  2.41s/it]
+Train features shape: (396, 2048) Val features shape: (99, 2048)
+After PCA: (396, 256)
+Validation -- acc: 0.4343 macro-F1: 0.4328
+
+Training classifier: adaboost
+Extracting features: 100% 13/13 [00:40<00:00,  3.10s/it]
+Extracting features: 100% 4/4 [00:08<00:00,  2.18s/it]
+Train features shape: (396, 2048) Val features shape: (99, 2048)
+After PCA: (396, 256)
+Validation -- acc: 0.5253 macro-F1: 0.4033
